@@ -1,16 +1,15 @@
-INSERT INTO users (first_name, last_name, email, password)
-VALUES ('Alice', 'Smith', 'alice@example.com', 'password');
+-- Insert dummy user
+INSERT INTO users (id, first_name, last_name, email, password_hash, created_at, is_deleted) 
+VALUES 
+('b953ea1b-635f-48d1-afba-d103a7421408', 'John', 'Doe', 'johndoe@example.com', '$2a$10$abcdefg1234567890', NOW(), FALSE);
 
-INSERT INTO user_bios (user_id, display_name, bio_description)
-VALUES (1, 'VintageAlice', 'Lover of 80s toys');
+-- Insert dummy user bio
+INSERT INTO user_bios (user_id, display_name, bio_description, profile_image, show_real_name, updated_at) 
+VALUES 
+('b953ea1b-635f-48d1-afba-d103a7421408', 'JDCollects', 'Passionate collector of vintage toys.', '/images/profile/johndoe.png', TRUE, NOW());
 
-
-INSERT INTO users (first_name, last_name, email, password_hash) 
-VALUES ('Joseph', 'Bartram', 'joseph@example.com', 'testpassword123')
-RETURNING id;
-
-INSERT INTO user_bios (user_id, display_name, store_name, bio_description, profile_image) 
-VALUES ('c06d5f22-b582-4bb9-a5bf-0fd8dc19130c', 'Test User', 'Test Store', 'Test description', 'https://example.com/profile.jpg');
-
-
- 
+-- Insert dummy user marker
+INSERT INTO user_markers (user_id, name, description, latitude, longitude, region, marker_type, created_at, updated_at) 
+VALUES 
+('b953ea1b-635f-48d1-afba-d103a7421408', 'John’s Toy Store', 'A local shop for rare vintage toys.', 
+52.6369, -1.1398, 'East Midlands', 'store', NOW(), NOW());
