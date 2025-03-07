@@ -8,8 +8,14 @@ INSERT INTO user_bios (user_id, display_name, bio_description, profile_image, sh
 VALUES 
 ('b953ea1b-635f-48d1-afba-d103a7421408', 'JDCollects', 'Passionate collector of vintage toys.', '/images/profile/johndoe.png', TRUE, NOW());
 
--- Insert dummy user marker
-INSERT INTO user_markers (user_id, name, description, latitude, longitude, region, marker_type, created_at, updated_at) 
-VALUES 
-('b953ea1b-635f-48d1-afba-d103a7421408', 'John’s Toy Store', 'A local shop for rare vintage toys.', 
-52.6369, -1.1398, 'East Midlands', 'store', NOW(), NOW());
+INSERT INTO user_markers (user_id, name, description, latitude, longitude, region, marker_type)
+VALUES (
+    'b953ea1b-635f-48d1-afba-d103a7421408', 
+    'Retro Toy Collectors', 
+    'A vintage toy store specializing in Star Wars and Transformers.', 
+    51.5074, 
+    -0.1278, 
+    'London', 
+    'Shop'
+);
+
