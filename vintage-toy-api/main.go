@@ -21,7 +21,7 @@ func main() {
 
 	// Set up CORS middleware
 	corsHandler := cors.New(cors.Options{
-		AllowedOrigins:   []string{"https://yourfrontenddomain.com"}, // Replace with your actual frontend domain
+		AllowedOrigins:   []string{"https://blastfromthepastbackend.onrender.com", "http://localhost:5173"},
 		AllowedMethods:   []string{"GET", "POST", "PUT", "DELETE"},
 		AllowedHeaders:   []string{"Authorization", "Content-Type"},
 		AllowCredentials: true,
