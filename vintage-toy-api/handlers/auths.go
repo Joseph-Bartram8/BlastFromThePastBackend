@@ -60,9 +60,9 @@ func LoginHandler(db *sql.DB) http.HandlerFunc {
 		http.SetCookie(w, &http.Cookie{
 			Name:     "auth_token",
 			Value:    tokenString,
-			HttpOnly: true,                    // Prevents JavaScript access (prevents XSS)
-			Secure:   true,                    // Ensures cookie is sent over HTTPS
-			SameSite: http.SameSiteStrictMode, // Prevents CSRF attacks
+			HttpOnly: true,                  // Prevents JavaScript access (prevents XSS)
+			Secure:   true,                  // Ensures cookie is sent over HTTPS
+			SameSite: http.SameSiteNoneMode, // Prevents CSRF attacks
 			Path:     "/",
 			Expires:  expirationTime,
 		})
@@ -80,7 +80,7 @@ func LogoutHandler() http.HandlerFunc {
 			Value:    "",
 			HttpOnly: true,
 			Secure:   true,
-			SameSite: http.SameSiteStrictMode,
+			SameSite: http.SameSiteNoneMode,
 			Path:     "/",
 			Expires:  time.Unix(0, 0),
 		})
