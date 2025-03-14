@@ -5,6 +5,7 @@ import (
 	"net/http"
 	"os"
 
+	"github.com/joho/godotenv"
 	_ "github.com/lib/pq"
 
 	"github.com/Joseph_Bartram8/vintage-toy-api/db"
@@ -12,16 +13,22 @@ import (
 )
 
 func main() {
+	if os.Getenv("DATABASE_URL") == "" {
+		if err := godotenv.Load(); err != nil {
+			log.Println("⚠️ Warning: No .env file found, using system environment variables")
+		}
+	}
+
 	// Connect to database
 	db.ConnectDB()
 
 	// Initialize router with database instance
 	r := router.SetupRouter(db.DB)
 
-	// Get port from environment variable (Render provides this dynamically)
+	// Determine port for local or Render
 	port := os.Getenv("PORT")
 	if port == "" {
-		port = "8080" // Default to 8080 if not set (for local testing)
+		port = "8080" // Default to 8080 for local testing
 	}
 
 	// Start server
