@@ -24,6 +24,7 @@ func SetupRouter(db *sql.DB) *chi.Mux {
 	r.Get("/users", handlers.GetUsersHandler(db))
 	r.Post("/logout", handlers.LogoutHandler())
 	r.Get("/markers", handlers.GetAllMarkersHandler(db))
+	r.Get("/users/search", handlers.SearchUsersHandler(db))
 
 	// Protected Routes
 	r.Route("/api", func(api chi.Router) {

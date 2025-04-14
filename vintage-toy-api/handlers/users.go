@@ -296,3 +296,51 @@ func DeleteUserHandler(db *sql.DB) http.HandlerFunc {
 		json.NewEncoder(w).Encode(map[string]string{"message": "Account deleted successfully"})
 	}
 }
+
+// Search a user by display name or store name
+func SearchUsersHandler(db *sql.DB) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		query := r.URL.Query().Get("q")
+		if query == "" {
+			http.Error(w, "Missing search query", http.StatusBadRequest)
+			return
+		}
+
+		rows, err := db.Query(`
+			SELECT ub.display_name, ub.profile_image, ub.store_name
+			FROM users u
+			JOIN user_bios ub ON u.id = ub.user_id
+			WHERE u.is_deleted = FALSE
+			  AND (ub.display_name ILIKE '%' || $1 || '%' OR ub.store_name ILIKE '%' || $1 || '%')
+			LIMIT 10
+		`, query)
+		if err != nil {
+			http.Error(w, "Database query error", http.StatusInternalServerError)
+			return
+		}
+		defer rows.Close()
+
+		var results []models.SearchUserResult
+		for rows.Next() {
+			var user models.SearchUserResult
+			var storeName, profileImage sql.NullString
+
+			if err := rows.Scan(&user.DisplayName, &profileImage, &storeName); err != nil {
+				http.Error(w, "Error scanning results", http.StatusInternalServerError)
+				return
+			}
+
+			if profileImage.Valid {
+				user.ProfileImage = &profileImage.String
+			}
+			if storeName.Valid {
+				user.StoreName = &storeName.String
+			}
+
+			results = append(results, user)
+		}
+
+		w.Header().Set("Content-Type", "application/json")
+		json.NewEncoder(w).Encode(results)
+	}
+}

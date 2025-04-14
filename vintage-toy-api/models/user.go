@@ -25,6 +25,7 @@ type CreateUserRequest struct {
 
 // UserResponse struct
 type UserResponse struct {
+	ID        *string          `json:"uuid"`
 	FirstName *string          `json:"first_name"`
 	LastName  *string          `json:"last_name"`
 	Email     *string          `json:"email"`
@@ -40,4 +41,11 @@ type UserBioResponse struct {
 	ProfileImage   *string `json:"profile_image,omitempty"`
 	ShowRealName   *bool   `json:"show_real_name,omitempty"`
 	UpdatedAt      string  `json:"updated_at"`
+}
+
+// SearchUserRequest struct
+type SearchUserResult struct {
+	DisplayName  string  `json:"display_name"`
+	ProfileImage *string `json:"profile_image,omitempty"`
+	StoreName    *string `json:"store_name,omitempty"`
 }
