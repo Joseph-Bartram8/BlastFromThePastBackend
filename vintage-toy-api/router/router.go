@@ -5,6 +5,7 @@ import (
 
 	"github.com/Joseph_Bartram8/vintage-toy-api/handlers"
 	"github.com/Joseph_Bartram8/vintage-toy-api/middleware"
+
 	"github.com/go-chi/chi/v5"
 	chimw "github.com/go-chi/chi/v5/middleware"
 )
