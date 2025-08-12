@@ -5,31 +5,27 @@ import (
 	"encoding/json"
 	"log"
 	"net/http"
-
-	"fmt"
+	"strings"
 
 	"github.com/Joseph_Bartram8/vintage-toy-api/middleware"
 	"github.com/Joseph_Bartram8/vintage-toy-api/models"
+	"golang.org/x/crypto/bcrypt"
 
 	//"github.com/go-chi/chi/v5"
 	"github.com/golang-jwt/jwt/v4"
 	"github.com/google/uuid"
-	"golang.org/x/crypto/bcrypt"
+	//"golang.org/x/crypto/bcrypt"
 )
 
 // Get all users
 func GetUsersHandler(db *sql.DB) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
-		// Query users with privacy setting applied
 		rows, err := db.Query(`
 			SELECT 
-				u.is_deleted, ub.display_name, ub.store_name, ub.bio_description, 
-				ub.profile_image, ub.show_real_name, ub.updated_at,
-				CASE WHEN ub.show_real_name THEN u.first_name ELSE NULL END AS first_name,
-				CASE WHEN ub.show_real_name THEN u.last_name ELSE NULL END AS last_name
+				ub.display_name, ub.store_name, ub.bio_description, ub.profile_image
 			FROM users u
 			JOIN user_bios ub ON u.id = ub.user_id
-			WHERE u.is_deleted = FALSE;
+			WHERE u.is_deleted = FALSE
 		`)
 		if err != nil {
 			http.Error(w, "Database error", http.StatusInternalServerError)
@@ -37,51 +33,30 @@ func GetUsersHandler(db *sql.DB) http.HandlerFunc {
 		}
 		defer rows.Close()
 
-		// Parse results into a slice
-		var users []models.User
+		var users []models.PublicUserSummary
 		for rows.Next() {
-			var user models.User
-			var bio models.UserBioResponse
-			var firstName, lastName, storeName, bioDescription, profileImage, updatedAt sql.NullString
+			var user models.PublicUserSummary
+			var storeName, bioDescription, profileImage sql.NullString
 
-			err := rows.Scan(
-				&user.IsDeleted,
-				&bio.DisplayName, &storeName, &bioDescription,
-				&bio.ProfileImage, &bio.ShowRealName, &updatedAt,
-				&firstName, &lastName,
-			)
+			err := rows.Scan(&user.DisplayName, &storeName, &bioDescription, &profileImage)
 			if err != nil {
 				http.Error(w, "Error scanning users", http.StatusInternalServerError)
 				return
 			}
 
-			// Assign nullable fields safely
-			if firstName.Valid {
-				user.FirstName = firstName.String
-			}
-			if lastName.Valid {
-				user.LastName = lastName.String
-			}
 			if storeName.Valid {
-				bio.StoreName = &storeName.String
+				user.StoreName = &storeName.String
 			}
 			if bioDescription.Valid {
-				bio.BioDescription = &bioDescription.String
+				user.BioDescription = &bioDescription.String
 			}
 			if profileImage.Valid {
-				bio.ProfileImage = &profileImage.String
+				user.ProfileImage = &profileImage.String
 			}
-			if updatedAt.Valid {
-				bio.UpdatedAt = updatedAt.String
-			}
-
-			// Attach UserBioResponse to UserResponse
-			user.UserBio = &bio
 
 			users = append(users, user)
 		}
 
-		// Return JSON response
 		w.Header().Set("Content-Type", "application/json")
 		json.NewEncoder(w).Encode(users)
 	}
@@ -92,137 +67,106 @@ func CreateUserHandler(db *sql.DB) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		var req models.CreateUserRequest
 
-		// Decode JSON request
 		if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 			http.Error(w, "Invalid request payload", http.StatusBadRequest)
 			return
 		}
 
-		// Validate user input
 		if err := models.Validate.Struct(req); err != nil {
 			http.Error(w, "Invalid input: "+err.Error(), http.StatusBadRequest)
 			return
 		}
 
-		// Hash the password
 		hashedPassword, err := bcrypt.GenerateFromPassword([]byte(req.Password), bcrypt.DefaultCost)
 		if err != nil {
-			http.Error(w, "Error hashing password", http.StatusInternalServerError)
+			http.Error(w, "Failed to hash password", http.StatusInternalServerError)
 			return
 		}
 
-		// Generate a UUID for the new user
 		userID := uuid.New()
 
-		// Insert user into the database
 		tx, err := db.Begin()
 		if err != nil {
 			http.Error(w, "Database error", http.StatusInternalServerError)
 			return
 		}
 
-		// Insert into users table
 		_, err = tx.Exec(`
 			INSERT INTO users (id, first_name, last_name, email, password_hash, created_at)
-			VALUES ($1, $2, $3, $4, $5, NOW())`,
-			userID, req.FirstName, req.LastName, req.Email, string(hashedPassword),
-		)
+			VALUES ($1, $2, $3, $4, $5, NOW())
+		`, userID, req.FirstName, req.LastName, req.Email, string(hashedPassword))
 		if err != nil {
 			tx.Rollback()
-			http.Error(w, "Error creating user", http.StatusInternalServerError)
+			if strings.Contains(err.Error(), "duplicate key") {
+				http.Error(w, "Email already in use", http.StatusConflict)
+			} else {
+				http.Error(w, "Error creating user", http.StatusInternalServerError)
+			}
 			return
 		}
 
-		// Insert into user_bios table
 		_, err = tx.Exec(`
 			INSERT INTO user_bios (user_id, display_name, bio_description, profile_image, updated_at)
-			VALUES ($1, $2, '', '', NOW())`,
-			userID, req.DisplayName,
-		)
+			VALUES ($1, $2, '', '', NOW())
+		`, userID, req.DisplayName)
 		if err != nil {
 			tx.Rollback()
-			http.Error(w, "Error creating user bio", http.StatusInternalServerError)
+			if strings.Contains(err.Error(), "duplicate key") {
+				http.Error(w, "Display name already in use", http.StatusConflict)
+			} else {
+				http.Error(w, "Error creating user bio", http.StatusInternalServerError)
+			}
 			return
 		}
 
-		// Commit transaction
-		err = tx.Commit()
-		if err != nil {
+		if err = tx.Commit(); err != nil {
 			http.Error(w, "Database commit error", http.StatusInternalServerError)
 			return
 		}
 
-		// Return created user info (excluding password)
-		json.NewEncoder(w).Encode(map[string]interface{}{
+		// Success response
+		resp := map[string]interface{}{
 			"id":           userID,
 			"first_name":   req.FirstName,
 			"last_name":    req.LastName,
 			"email":        req.Email,
 			"display_name": req.DisplayName,
-		})
+		}
+		w.Header().Set("Content-Type", "application/json")
+		json.NewEncoder(w).Encode(resp)
 	}
 }
-
-/*func GetUserByID(db *sql.DB) http.HandlerFunc {
-	return func(w http.ResponseWriter, r *http.Request) {
-		// Extract user ID from URL
-		userIDStr := chi.URLParam(r, "id")
-		userID, err := uuid.Parse(userIDStr)
-		if err != nil {
-			http.Error(w, "Invalid user ID", http.StatusBadRequest)
-			return
-		}
-
-		// Fetch user data
-		var user models.User
-		err = db.QueryRow("SELECT id, first_name, last_name, email, created_at FROM users WHERE id=$1", userID).
-			Scan(&user.ID, &user.FirstName, &user.LastName, &user.Email, &user.CreatedAt)
-		if err != nil {
-			http.Error(w, "User not found", http.StatusNotFound)
-			return
-		}
-
-		json.NewEncoder(w).Encode(user)
-	}
-}*/
 
 // GetCurrentUserHandler fetches the authenticated user's info
 func GetCurrentUserHandler(db *sql.DB) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
-		fmt.Println("Received Cookies:", r.Cookies())
-
 		// Retrieve the JWT token from cookies
 		cookie, err := r.Cookie("auth_token")
 		if err != nil {
-			log.Println("No auth_token cookie found")
 			http.Error(w, "Missing token", http.StatusUnauthorized)
 			return
 		}
 
 		tokenStr := cookie.Value
-		fmt.Println("Cookie Value:", tokenStr)
 
 		// Parse and validate the token
 		claims := &jwt.RegisteredClaims{}
 		token, err := jwt.ParseWithClaims(tokenStr, claims, func(token *jwt.Token) (interface{}, error) {
 			return jwtKey, nil
 		})
-
 		if err != nil || !token.Valid {
-			log.Println("Invalid or expired token")
-			http.Error(w, "Invalid token", http.StatusUnauthorized)
+			http.Error(w, "Invalid or expired token", http.StatusUnauthorized)
 			return
 		}
 
-		// Extract user ID from token
+		// Extract user ID from token claims
 		userID, err := uuid.Parse(claims.Subject)
 		if err != nil {
-			log.Println("Invalid token subject")
 			http.Error(w, "Invalid token subject", http.StatusUnauthorized)
 			return
 		}
 
-		// Query user details along with user bio in one query
+		// Query user and bio data
 		var user models.UserResponse
 		var bio models.UserBioResponse
 		var storeName, bioDescription, profileImage, updatedAt sql.NullString
@@ -236,22 +180,21 @@ func GetCurrentUserHandler(db *sql.DB) http.HandlerFunc {
 			LEFT JOIN user_bios ub ON u.id = ub.user_id
 			WHERE u.id = $1 AND u.is_deleted = FALSE;
 		`, userID).Scan(
-			&user.FirstName, &user.LastName, &user.Email, &isDeleted, 
+			&user.FirstName, &user.LastName, &user.Email, &isDeleted,
 			&bio.DisplayName, &storeName, &bioDescription,
 			&profileImage, &bio.ShowRealName, &updatedAt,
 		)
 
 		if err == sql.ErrNoRows {
-			log.Println("User not found in database")
 			http.Error(w, "User not found", http.StatusNotFound)
 			return
 		} else if err != nil {
-			log.Println("Database error:", err)
+			log.Printf("Error fetching user: %v", err)
 			http.Error(w, "Database error", http.StatusInternalServerError)
 			return
 		}
 
-		// Assign nullable fields safely
+		// Assign nullable fields
 		if storeName.Valid {
 			bio.StoreName = &storeName.String
 		}
@@ -265,11 +208,10 @@ func GetCurrentUserHandler(db *sql.DB) http.HandlerFunc {
 			bio.UpdatedAt = updatedAt.String
 		}
 
-		// Attach UserBioResponse to UserResponse
 		user.IsDeleted = &isDeleted
 		user.UserBio = &bio
 
-		// Return JSON response
+		// Respond with JSON
 		w.Header().Set("Content-Type", "application/json")
 		json.NewEncoder(w).Encode(user)
 	}
@@ -278,71 +220,57 @@ func GetCurrentUserHandler(db *sql.DB) http.HandlerFunc {
 // UpdateUserHandler updates the authenticated user's profile
 func UpdateUserHandler(db *sql.DB) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
-		// Extract user ID from context (already correct)
+		// Get user ID from middleware context
 		userID, ok := r.Context().Value(middleware.UserIDKey).(uuid.UUID)
 		if !ok {
 			http.Error(w, "Unauthorized", http.StatusUnauthorized)
 			return
 		}
 
-		// Parse request body
+		// Parse incoming JSON
 		var req models.UpdateUserRequest
 		if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 			http.Error(w, "Invalid request payload", http.StatusBadRequest)
 			return
 		}
 
-		// Start a database transaction
+		// Start DB transaction
 		tx, err := db.Begin()
 		if err != nil {
-			http.Error(w, "Database transaction error", http.StatusInternalServerError)
+			http.Error(w, "Could not start transaction", http.StatusInternalServerError)
 			return
 		}
 
-		// Update `users` table if needed
-		if req.FirstName != nil || req.LastName != nil {
-			_, err := tx.Exec(`
-				UPDATE users 
-				SET first_name = COALESCE($1, first_name), 
-					last_name = COALESCE($2, last_name)
-				WHERE id = $3`,
-				req.FirstName, req.LastName, userID,
-			)
-			if err != nil {
-				tx.Rollback()
-				http.Error(w, "Error updating user profile", http.StatusInternalServerError)
-				return
-			}
-		}
+		// Update user_bios table
+		_, err = tx.Exec(`
+			UPDATE user_bios
+			SET display_name = COALESCE($1, display_name),
+				bio_description = COALESCE($2, bio_description),
+				profile_image = COALESCE($3, profile_image),
+				show_real_name = COALESCE($4, show_real_name),
+				updated_at = NOW()
+			WHERE user_id = $5
+		`, req.DisplayName, req.BioDescription, req.ProfileImage, req.ShowRealName, userID)
 
-		// Update `user_bios` table if needed
-		if req.DisplayName != nil || req.BioDescription != nil || req.ProfileImage != nil {
-			_, err := tx.Exec(`
-				UPDATE user_bios 
-				SET display_name = COALESCE($1, display_name), 
-					bio_description = COALESCE($2, bio_description), 
-					profile_image = COALESCE($3, profile_image),
-					updated_at = NOW()
-				WHERE user_id = $4`,
-				req.DisplayName, req.BioDescription, req.ProfileImage, userID,
-			)
-			if err != nil {
-				tx.Rollback()
-				http.Error(w, "Error updating user bio", http.StatusInternalServerError)
-				return
-			}
-		}
-
-		// Commit transaction
-		err = tx.Commit()
 		if err != nil {
-			http.Error(w, "Database commit error", http.StatusInternalServerError)
+			tx.Rollback()
+			log.Printf("Update user_bios error: %v", err)
+			http.Error(w, "Failed to update user bio", http.StatusInternalServerError)
 			return
 		}
 
-		// Return success message
-		w.WriteHeader(http.StatusOK)
-		json.NewEncoder(w).Encode(map[string]string{"message": "Profile updated successfully"})
+		// Commit changes
+		if err := tx.Commit(); err != nil {
+			log.Printf("Transaction commit error: %v", err)
+			http.Error(w, "Commit failed", http.StatusInternalServerError)
+			return
+		}
+
+		// Return success
+		w.Header().Set("Content-Type", "application/json")
+		json.NewEncoder(w).Encode(map[string]string{
+			"message": "Profile updated successfully",
+		})
 	}
 }
 
@@ -366,5 +294,53 @@ func DeleteUserHandler(db *sql.DB) http.HandlerFunc {
 		// Return success response
 		w.WriteHeader(http.StatusOK)
 		json.NewEncoder(w).Encode(map[string]string{"message": "Account deleted successfully"})
+	}
+}
+
+// Search a user by display name or store name
+func SearchUsersHandler(db *sql.DB) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		query := r.URL.Query().Get("q")
+		if query == "" {
+			http.Error(w, "Missing search query", http.StatusBadRequest)
+			return
+		}
+
+		rows, err := db.Query(`
+			SELECT ub.display_name, ub.profile_image, ub.store_name
+			FROM users u
+			JOIN user_bios ub ON u.id = ub.user_id
+			WHERE u.is_deleted = FALSE
+			  AND (ub.display_name ILIKE '%' || $1 || '%' OR ub.store_name ILIKE '%' || $1 || '%')
+			LIMIT 10
+		`, query)
+		if err != nil {
+			http.Error(w, "Database query error", http.StatusInternalServerError)
+			return
+		}
+		defer rows.Close()
+
+		var results []models.SearchUserResult
+		for rows.Next() {
+			var user models.SearchUserResult
+			var storeName, profileImage sql.NullString
+
+			if err := rows.Scan(&user.DisplayName, &profileImage, &storeName); err != nil {
+				http.Error(w, "Error scanning results", http.StatusInternalServerError)
+				return
+			}
+
+			if profileImage.Valid {
+				user.ProfileImage = &profileImage.String
+			}
+			if storeName.Valid {
+				user.StoreName = &storeName.String
+			}
+
+			results = append(results, user)
+		}
+
+		w.Header().Set("Content-Type", "application/json")
+		json.NewEncoder(w).Encode(results)
 	}
 }

@@ -13,25 +13,35 @@ import (
 var DB *sql.DB
 
 func ConnectDB() {
-	// Load environment variables (only needed for local development)
-	err := godotenv.Load()
-	if err != nil {
-		log.Println("⚠️ No .env file found, using environment variables")
+	// Check if running locally (Render sets `RENDER` environment variable)
+	_, isRender := os.LookupEnv("RENDER")
+
+	// Load environment variables from .env file only if running locally
+	if !isRender {
+		err := godotenv.Load()
+		if err != nil {
+			log.Println("⚠️ Warning: No .env file found, using system environment variables.")
+		}
 	}
 
-	// Get connection string from environment variables
-	connStr := os.Getenv("DATABASE_URL")
-	if connStr == "" {
-		log.Fatal("❌ DATABASE_URL environment variable is not set")
-	}
-
-	// Ensure Render-compatible connection settings (disable SSL for local but enable for production)
-	if os.Getenv("ENV") != "production" {
-		connStr += " sslmode=disable"
+	// Use DATABASE_URL if it exists (Render provides this)
+	dbURL := os.Getenv("DATABASE_URL")
+	if dbURL == "" {
+		// If DATABASE_URL isn't provided, fall back to manually building the connection string
+		dbURL = fmt.Sprintf(
+			"host=%s port=%s user=%s password=%s dbname=%s sslmode=%s",
+			os.Getenv("DB_HOST"),
+			os.Getenv("DB_PORT"),
+			os.Getenv("DB_USER"),
+			os.Getenv("DB_PASSWORD"),
+			os.Getenv("DB_NAME"),
+			os.Getenv("DB_SSLMODE"),
+		)
 	}
 
 	// Connect to PostgreSQL
-	DB, err = sql.Open("postgres", connStr)
+	var err error
+	DB, err = sql.Open("postgres", dbURL)
 	if err != nil {
 		log.Fatal("❌ Database connection failed:", err)
 	}

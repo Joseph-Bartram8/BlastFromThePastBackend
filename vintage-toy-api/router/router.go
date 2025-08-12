@@ -5,6 +5,7 @@ import (
 
 	"github.com/Joseph_Bartram8/vintage-toy-api/handlers"
 	"github.com/Joseph_Bartram8/vintage-toy-api/middleware"
+
 	"github.com/go-chi/chi/v5"
 	chimw "github.com/go-chi/chi/v5/middleware"
 )
@@ -24,6 +25,7 @@ func SetupRouter(db *sql.DB) *chi.Mux {
 	r.Get("/users", handlers.GetUsersHandler(db))
 	r.Post("/logout", handlers.LogoutHandler())
 	r.Get("/markers", handlers.GetAllMarkersHandler(db))
+	r.Get("/users/search", handlers.SearchUsersHandler(db))
 
 	// Protected Routes
 	r.Route("/api", func(api chi.Router) {
